@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { readAccessCode, type CoachProvider } from './connection';
+import { type CoachProvider } from './connection';
 
 export type Note = {
   id: string;
@@ -56,11 +56,9 @@ const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? (Pl
 
 async function post<T>(path: string, body: object, provider: CoachProvider): Promise<T | null> {
   if (API_BASE === undefined) return null;
-  const accessCode = await readAccessCode();
-  if (!accessCode) return null;
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessCode}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, provider }),
   });
   if (!response.ok) throw new Error(`Coach service returned ${response.status}`);

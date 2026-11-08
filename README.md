@@ -16,13 +16,12 @@ The web app stores notes in ordinary browser storage and does not have biometric
 
 The Git repository builds the web app and three Vercel Functions. In Vercel Project Settings → Environment Variables, add these for **Production** and **Preview** as secret values:
 
-- `GAB_ACCESS_CODE`: a long, random, unique code from a password manager. Anyone with this code can use your AI credits. Enter this code in Gab → Settings after deployment.
 - `OPENAI_API_KEY`: your existing OpenAI API key.
 - `ANTHROPIC_API_KEY`: your Claude API key, if you want Claude access.
 
 You can set `OPENAI_MODEL` and `ANTHROPIC_MODEL` to override the defaults. Redeploy after changing environment variables. Do not use the `EXPO_PUBLIC_` prefix for API keys. The web app calls same-origin `/api/*` endpoints. Native builds need `EXPO_PUBLIC_API_BASE_URL` set to the deployed Vercel URL at build time.
 
-The access code is a personal-prototype gate, not a full account system. Before offering Gab to other people, add user accounts, per-user quotas, and rate limits.
+The AI API is publicly accessible. Anyone who can reach it can use the configured API credits. Add authentication and rate limits before sharing it widely.
 
 ## Run locally
 
@@ -38,7 +37,7 @@ To use your **existing** OpenAI key, run this on your own machine. It prompts fo
 ./scripts/configure-key.ps1
 ```
 
-Also add `GAB_ACCESS_CODE` to `.env.local` and enter the same code in Gab → Settings. Add `ANTHROPIC_API_KEY` there if you want to use Claude locally. See `.env.example` for the variable names.
+Add `ANTHROPIC_API_KEY` to `.env.local` if you want to use Claude locally. See `.env.example` for the variable names.
 
 Then start the API and app in separate terminals:
 

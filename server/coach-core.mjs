@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'node:crypto';
 import OpenAI from 'openai';
 
 const schemas = {
@@ -17,13 +16,6 @@ const originHeaders = request => {
   const allowed = process.env.CORS_ORIGIN || 'http://localhost:8081';
   return origin === allowed ? { 'Access-Control-Allow-Origin': allowed, 'Access-Control-Allow-Headers': 'content-type, authorization', 'Access-Control-Allow-Methods': 'POST, OPTIONS', Vary: 'Origin' } : {};
 };
-function authorized(request) {
-  const expected = process.env.GAB_ACCESS_CODE;
-  const supplied = request.headers.get('authorization')?.replace(/^Bearer /i, '') || '';
-  if (!expected || !supplied) return false;
-  const a = Buffer.from(expected), b = Buffer.from(supplied);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 function validInput(kind, input) {
   if (!input || typeof input !== 'object' || !['openai', 'claude'].includes(input.provider)) return false;
   if (kind === 'prep') return typeof input.situation === 'string' && input.situation.length <= 500 && (input.person === null || typeof input.person === 'string' && input.person.length <= 100) && Array.isArray(input.notes) && input.notes.length <= 3 && input.notes.every(n => typeof n === 'string' && n.length <= 500);
@@ -50,8 +42,6 @@ export async function handleCoach(request, kind) {
   const headers = originHeaders(request);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (request.method !== 'POST') return json({ error: 'Not found' }, 404, headers);
-  if (!process.env.GAB_ACCESS_CODE) return json({ error: 'Coach access is not configured' }, 503, headers);
-  if (!authorized(request)) return json({ error: 'Invalid access code' }, 401, headers);
   if (Number(request.headers.get('content-length')) > 12000) return json({ error: 'Request too large' }, 413, headers);
   try {
     const raw = await request.text();
