@@ -4,7 +4,7 @@ Gab helps you get ready for a real conversation, find one small nudge during a l
 
 ## What works
 
-- **Chat**: type or dictate to the coach on the home screen. Messages in the current session are sent to the selected AI provider; Notebook notes are not sent automatically and chat does not save notes.
+- **Chat**: type or dictate to the coach on the home screen. Messages in the current session go to the selected AI provider. You can explicitly select a person to share their name and up to three current notes. Each of your messages offers a note suggestion that you can review and approve before saving.
 - **About to…**: a short card with an opener, two follow-ups, and a kind exit.
 - **I'm stuck**: ask, share, change topic, leave kindly, or simply allow a quiet moment.
 - **People Notebook**: add people, dictate or type a debrief, review a proposed detail, approve it, then edit, mark, or delete it later. Each saved detail retains the user's original words.

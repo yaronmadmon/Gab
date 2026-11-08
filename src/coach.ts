@@ -20,6 +20,7 @@ export type PrepCard = { opener: string; followUps: [string, string]; exit: stri
 export type StuckCard = { ask: string; share: string; change: string; leave: string; quiet: string };
 export type NoteSuggestion = { name: string; detail: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
+export type ChatContext = { name: string; notes: string[] };
 
 export const initialPrep: PrepCard = {
   opener: "Good to see you. How's your week going?",
@@ -83,8 +84,8 @@ export async function getStuck(word: string, provider: CoachProvider = 'openai')
 export async function suggestNote(raw: string, provider: CoachProvider = 'openai'): Promise<NoteSuggestion | null> {
   return post<NoteSuggestion>('/api/note', { raw }, provider);
 }
-export async function sendChat(messages: ChatMessage[], provider: CoachProvider): Promise<string> {
-  const result = await post<{ reply: string }>('/api/chat', { messages: messages.slice(-19) }, provider);
+export async function sendChat(messages: ChatMessage[], provider: CoachProvider, context: ChatContext | null): Promise<string> {
+  const result = await post<{ reply: string }>('/api/chat', { messages: messages.slice(-19), context }, provider);
   if (!result?.reply) throw new Error('Coach service unavailable');
   return result.reply;
 }
