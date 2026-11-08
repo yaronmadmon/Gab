@@ -1,0 +1,59 @@
+# Gab
+
+Gab helps you get ready for a real conversation, find one small nudge during a lull, and remember what a person told you afterward. This repository contains a first Expo/React Native prototype for iOS, Android, and a browser preview.
+
+## What works
+
+- **About to…**: a short card with an opener, two follow-ups, and a kind exit.
+- **I'm stuck**: ask, share, change topic, leave kindly, or simply allow a quiet moment.
+- **People Notebook**: add people, dictate or type a debrief, review a proposed detail, approve it, then edit, mark, or delete it later. Each saved detail retains the user's original words.
+- **Local fallback**: the first two cards work without an API connection.
+- **Privacy controls**: native Notebook data is encrypted at rest, with the encryption key in the device's secure store. The app asks for device authentication when available. It does not listen to other people.
+
+The browser preview stores notes in ordinary browser storage and does not have biometric locking. Use fictional details for browser testing.
+
+## Run locally
+
+Use Node.js 22.13 or newer. From this directory:
+
+```powershell
+npm install
+```
+
+To use your **existing** OpenAI key, run this on your own machine. It prompts for the key without showing what you type and writes it to the ignored `.env.local` file:
+
+```powershell
+./scripts/configure-key.ps1
+```
+
+Then start the API and app in separate terminals:
+
+```powershell
+npm run coach
+```
+
+```powershell
+npm run web
+```
+
+Open `http://localhost:8081`. The API listens on `127.0.0.1:8787` by default. The OpenAI key stays in the local API process; it is not embedded in the phone or web bundle.
+
+For Android or iOS, `expo-speech-recognition` requires a **development build**, so Expo Go cannot run voice dictation. On a machine with the native toolchain, run `npx expo run:android` or `npx expo run:ios`. Android emulator API requests can use `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8787`. A physical phone needs a reachable, authenticated API deployment before AI features can be used safely; the local fallback cards and Notebook work without it.
+
+## Privacy boundary
+
+People and notes are stored only on the device in the native app. When you request AI coaching, your current text is sent to the local API service and then to OpenAI. A selected person's approved notes are sent only if you turn on the note option on the prep screen. When you request an AI note suggestion, that debrief text is sent to OpenAI; the proposed note is stored only after you approve it. The API does not persist request bodies and uses `store: false` for Responses API calls. Dictation uses the operating system's speech service, which may process audio over a network depending on device settings.
+
+Do not advertise this prototype as fully on-device AI. The plan's stronger privacy promise requires an on-device model or a separate user-reviewed policy for cloud processing.
+
+## Checks
+
+```powershell
+npm run typecheck
+npx expo-doctor
+npx expo export --platform web
+```
+
+## Next product steps
+
+Test this version with about ten people for two weeks. Watch whether they use **I'm stuck** in a real conversation and add someone to the Notebook. Then build the missed-moment text and short voice practice flows. Before a public release, add account/device recovery, a secure hosted API with authentication and rate limits, and native device testing on both platforms.
