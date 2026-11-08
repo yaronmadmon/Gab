@@ -23,6 +23,8 @@ export type NoteSuggestion = { name: string; detail: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 export type Story = { about: string; goal: string; help: string };
 export type ChatContext = { name?: string; notes?: string[]; personGoal?: string; story?: Story };
+export type PracticeDifficulty = 'friendly' | 'busy' | 'short answers' | 'interrupts';
+export type PracticeFeedback = { strength: string; nextStep: string };
 
 export const initialPrep: PrepCard = {
   opener: "Good to see you. How's your week going?",
@@ -91,6 +93,26 @@ export async function sendChat(messages: ChatMessage[], provider: CoachProvider,
   const result = await post<{ reply: string }>('/api/chat', { messages: messages.slice(-19), context }, provider);
   if (!result?.reply) throw new Error('Coach service unavailable');
   return result.reply;
+}
+export async function getRecovery(raw: string, impact: 'froze' | 'hurt' | 'embarrassed' | 'unsure', provider: CoachProvider): Promise<{ response: string; nextStep: string }> {
+  if (impact === 'froze') {
+    const result = await post<{ message: string; nextStep: string }>('/api/froze', { raw }, provider);
+    if (!result) throw new Error('Coach unavailable');
+    return { response: result.message, nextStep: result.nextStep };
+  }
+  const result = await post<{ response: string; nextStep: string }>('/api/awkward', { raw, impact }, provider);
+  if (!result) throw new Error('Coach unavailable');
+  return result;
+}
+export async function practiceTurn(scene: string, difficulty: PracticeDifficulty, messages: ChatMessage[], provider: CoachProvider): Promise<string> {
+  const result = await post<{ reply: string }>('/api/practice', { scene, difficulty, messages: messages.slice(-18) }, provider);
+  if (!result?.reply) throw new Error('Coach unavailable');
+  return result.reply;
+}
+export async function getPracticeFeedback(scene: string, messages: ChatMessage[], provider: CoachProvider): Promise<PracticeFeedback> {
+  const result = await post<PracticeFeedback>('/api/feedback', { scene, messages: messages.slice(-12) }, provider);
+  if (!result) throw new Error('Coach unavailable');
+  return result;
 }
 
 export const coachConnected = API_BASE !== undefined;

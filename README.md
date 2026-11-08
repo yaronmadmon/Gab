@@ -6,6 +6,8 @@ Gab helps you get ready for a real conversation, find one small nudge during a l
 
 - **Chat**: type or dictate to the coach on the home screen. Messages in the current session go to the selected AI provider. You can explicitly select a person to share their name and up to three current notes. Each of your messages offers a note suggestion that you can review and approve before saving.
 - **Your story & circle**: answer a few optional questions about yourself or one person, then review and approve before saving. In the chat menu, you can explicitly share your story and select a person's name, goal, and current notes for coaching. Your answers are stored locally; the browser version is not encrypted.
+- **I froze / That felt awkward**: describe a missed or awkward moment and get an optional response and a small next step. Gab never sends a message for you.
+- **Practice**: choose a scene and a response style, then type or dictate to a practice partner. You can play its replies aloud, end at any time, and get one strength and one next step. Practice is not saved.
 - **About to…**: a short card with an opener, two follow-ups, and a kind exit.
 - **I'm stuck**: ask, share, change topic, leave kindly, or simply allow a quiet moment.
 - **People Notebook**: add people, dictate or type a debrief, review a proposed detail, approve it, then edit, mark, or delete it later. Each saved detail retains the user's original words.
