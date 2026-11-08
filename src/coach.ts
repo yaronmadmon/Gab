@@ -52,7 +52,7 @@ export function localStuck(word: string): StuckCard {
   };
 }
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? (Platform.OS === 'web' ? '' : undefined);
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? (Platform.OS === 'web' ? '' : 'https://gab-sandy-nu.vercel.app');
 
 async function post<T>(path: string, body: object, provider: CoachProvider): Promise<T | null> {
   if (API_BASE === undefined) return null;
