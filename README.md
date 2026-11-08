@@ -8,6 +8,7 @@ Gab helps you get ready for a real conversation, find one small nudge during a l
 - **Your story & circle**: answer a few optional questions about yourself or one person, then review and approve before saving. In the chat menu, you can explicitly share your story and select a person's name, goal, and current notes for coaching. Your answers are stored locally; the browser version is not encrypted.
 - **I froze / That felt awkward**: describe a missed or awkward moment and get an optional response and a small next step. Gab never sends a message for you.
 - **Practice**: choose a scene and a response style, then type or dictate to a practice partner. You can play its replies aloud, end at any time, and get one strength and one next step. Practice is not saved.
+- **Your progress**: optional daily ideas, saved wins and reflections, a rolling seven-day recap, and configurable hints. An opt-in gradual setting reduces hints weekly. An optional reminder appears inside Gab when it is open after the chosen time; the web app does not send background notifications. Progress stays on the device and browser storage is not encrypted.
 - **About to…**: a short card with an opener, two follow-ups, and a kind exit.
 - **I'm stuck**: ask, share, change topic, leave kindly, or simply allow a quiet moment.
 - **People Notebook**: add people, dictate or type a debrief, review a proposed detail, approve it, then edit, mark, or delete it later. Each saved detail retains the user's original words.

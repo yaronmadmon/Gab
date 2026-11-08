@@ -3,11 +3,13 @@ import { Platform } from 'react-native';
 import { AESEncryptionKey, AESSealedData, aesDecryptAsync, aesEncryptAsync } from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import type { Person, Story } from './coach';
+import { emptyProgress, type ProgressData } from './progress';
 
 const PLAIN_KEY = 'gab.people.v1';
 const ENCRYPTED_KEY = 'gab.people.v2';
 const SECRET_KEY = 'gab.notebook.key.v1';
 const STORY_KEY = 'gab.story.v1';
+const PROGRESS_KEY = 'gab.progress.v1';
 
 function parsePeople(raw: string): Person[] {
   const value = JSON.parse(raw);
@@ -78,6 +80,28 @@ export async function writeStory(story: Story) {
   if (!key) throw new Error('Story key is unavailable');
   const sealed = await aesEncryptAsync(new TextEncoder().encode(raw), key);
   return AsyncStorage.setItem(STORY_KEY, await sealed.combined('base64') as string);
+}
+
+export async function readProgress(): Promise<ProgressData> {
+  const stored = await AsyncStorage.getItem(PROGRESS_KEY);
+  if (!stored) return emptyProgress();
+  let raw = stored;
+  if (Platform.OS !== 'web') {
+    const key = await getKey(false);
+    if (!key) throw new Error('Progress key is unavailable');
+    raw = new TextDecoder().decode(await aesDecryptAsync(AESSealedData.fromCombined(stored), key) as Uint8Array);
+  }
+  const value = JSON.parse(raw);
+  if (!value || !Array.isArray(value.entries) || !value.reminder || !value.hints) throw new Error('Progress format is invalid');
+  return value;
+}
+export async function writeProgress(progress: ProgressData) {
+  const raw = JSON.stringify(progress);
+  if (Platform.OS === 'web') return AsyncStorage.setItem(PROGRESS_KEY, raw);
+  const key = await getKey(true);
+  if (!key) throw new Error('Progress key is unavailable');
+  const sealed = await aesEncryptAsync(new TextEncoder().encode(raw), key);
+  return AsyncStorage.setItem(PROGRESS_KEY, await sealed.combined('base64') as string);
 }
 
 export function newId() {
