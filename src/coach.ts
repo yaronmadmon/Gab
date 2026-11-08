@@ -1,3 +1,6 @@
+import { Platform } from 'react-native';
+import { readAccessCode, type CoachProvider } from './connection';
+
 export type Note = {
   id: string;
   text: string;
@@ -49,35 +52,37 @@ export function localStuck(word: string): StuckCard {
   };
 }
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? (Platform.OS === 'web' ? '' : undefined);
 
-async function post<T>(path: string, body: object): Promise<T | null> {
-  if (!API_BASE) return null;
+async function post<T>(path: string, body: object, provider: CoachProvider): Promise<T | null> {
+  if (API_BASE === undefined) return null;
+  const accessCode = await readAccessCode();
+  if (!accessCode) return null;
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessCode}` },
+    body: JSON.stringify({ ...body, provider }),
   });
   if (!response.ok) throw new Error(`Coach service returned ${response.status}`);
   return (await response.json()) as T;
 }
 
-export async function getPrep(situation: string, person?: Person, includeNotes = false): Promise<PrepCard> {
+export async function getPrep(situation: string, person?: Person, includeNotes = false, provider: CoachProvider = 'openai'): Promise<PrepCard> {
   const fallback = localPrep(situation, person);
   const result = await post<PrepCard>('/api/prep', {
     situation,
     person: person?.name || null,
     notes: includeNotes ? person?.notes.filter((note) => note.status === 'current').map((note) => note.text).slice(0, 3) : [],
-  });
+  }, provider);
   return result || fallback;
 }
 
-export async function getStuck(word: string): Promise<StuckCard> {
-  return (await post<StuckCard>('/api/stuck', { word })) || localStuck(word);
+export async function getStuck(word: string, provider: CoachProvider = 'openai'): Promise<StuckCard> {
+  return (await post<StuckCard>('/api/stuck', { word }, provider)) || localStuck(word);
 }
 
-export async function suggestNote(raw: string): Promise<NoteSuggestion | null> {
-  return post<NoteSuggestion>('/api/note', { raw });
+export async function suggestNote(raw: string, provider: CoachProvider = 'openai'): Promise<NoteSuggestion | null> {
+  return post<NoteSuggestion>('/api/note', { raw }, provider);
 }
 
-export const coachConnected = Boolean(API_BASE);
+export const coachConnected = API_BASE !== undefined;
