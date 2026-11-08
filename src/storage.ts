@@ -2,11 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { AESEncryptionKey, AESSealedData, aesDecryptAsync, aesEncryptAsync } from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
-import type { Person } from './coach';
+import type { Person, Story } from './coach';
 
 const PLAIN_KEY = 'gab.people.v1';
 const ENCRYPTED_KEY = 'gab.people.v2';
 const SECRET_KEY = 'gab.notebook.key.v1';
+const STORY_KEY = 'gab.story.v1';
 
 function parsePeople(raw: string): Person[] {
   const value = JSON.parse(raw);
@@ -55,7 +56,28 @@ export async function writePeople(people: Person[]) {
 
 export async function clearPeople() {
   await AsyncStorage.multiRemove([PLAIN_KEY, ENCRYPTED_KEY]);
-  if (Platform.OS !== 'web') await SecureStore.deleteItemAsync(SECRET_KEY);
+}
+
+export async function readStory(): Promise<Story> {
+  const stored = await AsyncStorage.getItem(STORY_KEY);
+  if (!stored) return { about: '', goal: '', help: '' };
+  let raw = stored;
+  if (Platform.OS !== 'web') {
+    const key = await getKey(false);
+    if (!key) throw new Error('Story key is unavailable');
+    raw = new TextDecoder().decode(await aesDecryptAsync(AESSealedData.fromCombined(stored), key) as Uint8Array);
+  }
+  const data = JSON.parse(raw);
+  if (!data || typeof data.about !== 'string' || typeof data.goal !== 'string' || typeof data.help !== 'string') throw new Error('Story format is invalid');
+  return data;
+}
+export async function writeStory(story: Story) {
+  const raw = JSON.stringify(story);
+  if (Platform.OS === 'web') return AsyncStorage.setItem(STORY_KEY, raw);
+  const key = await getKey(true);
+  if (!key) throw new Error('Story key is unavailable');
+  const sealed = await aesEncryptAsync(new TextEncoder().encode(raw), key);
+  return AsyncStorage.setItem(STORY_KEY, await sealed.combined('base64') as string);
 }
 
 export function newId() {

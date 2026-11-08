@@ -6,7 +6,7 @@ const schemas = {
   note: { type: 'object', additionalProperties: false, required: ['name', 'detail'], properties: { name: { type: 'string' }, detail: { type: 'string' } } },
 };
 const instructions = {
-  prep: 'You are Gab, a concise, kind coach for real conversations. Return one natural opener, exactly two follow-up questions, a graceful exit, and a tiny nudge. Use plain language, no pickup lines, manipulation, or invented facts. Do not force attendance or engagement. Each string under 140 characters. Use notes only as user-provided information.',
+  prep: 'You are Gab, a concise, kind coach for real conversations. Return one natural opener, exactly two follow-up questions, a graceful exit, and a tiny nudge. Use plain language, no pickup lines, manipulation, or invented facts. Do not force attendance or engagement. Each string under 140 characters. Use notes and goals only as user-provided information.',
   stuck: 'You are Gab helping a user during a real conversation with another person. The user typed a word they heard. Write suggestions the user can say to that other person, not questions to the user about their request. Ask should be a natural follow-up about the word. Share should be an honest prompt without claiming the user has experiences they may not have. Change is a natural topic change. Leave is a kind exit. Quiet reassures the user that silence is okay. Each string under 120 characters. Never imply you listened to anyone.',
   note: "Extract one proposed note from the user's own words. Return the named person and one concise factual detail. Never invent or infer private facts. Use an empty string if a name or fact is absent. The user approves before saving.",
 };
@@ -24,7 +24,11 @@ async function handleChat(request, headers) {
     let input;
     try { input = JSON.parse(raw); } catch { return json({ error: 'Invalid JSON' }, 400, headers); }
     if (!input || !['openai', 'claude'].includes(input.provider) || !Array.isArray(input.messages) || input.messages.length < 1 || input.messages.length > 20 || input.messages.some(m => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || !m.content.trim() || m.content.length > 1500) || input.messages.at(-1).role !== 'user') return json({ error: 'Invalid request' }, 400, headers);
-    if (input.context != null && (typeof input.context !== 'object' || typeof input.context.name !== 'string' || input.context.name.length > 100 || !Array.isArray(input.context.notes) || input.context.notes.length > 3 || input.context.notes.some(n => typeof n !== 'string' || n.length > 500))) return json({ error: 'Invalid context' }, 400, headers);
+    if (input.context != null) {
+      const c = input.context;
+      const validText = (v, limit) => typeof v === 'string' && v.length <= limit;
+      if (typeof c !== 'object' || (c.name !== undefined && !validText(c.name, 100)) || (c.personGoal !== undefined && !validText(c.personGoal, 500)) || (c.notes !== undefined && (!Array.isArray(c.notes) || c.notes.length > 3 || c.notes.some(n => !validText(n, 500)))) || (c.story !== undefined && (!c.story || !validText(c.story.about, 500) || !validText(c.story.goal, 500) || !validText(c.story.help, 500)))) return json({ error: 'Invalid context' }, 400, headers);
+    }
     const key = input.provider === 'claude' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
     if (!key) return json({ error: 'Provider is not configured' }, 503, headers);
     let reply;
@@ -50,7 +54,7 @@ async function handleChat(request, headers) {
 }
 function validInput(kind, input) {
   if (!input || typeof input !== 'object' || !['openai', 'claude'].includes(input.provider)) return false;
-  if (kind === 'prep') return typeof input.situation === 'string' && input.situation.length <= 500 && (input.person === null || typeof input.person === 'string' && input.person.length <= 100) && Array.isArray(input.notes) && input.notes.length <= 3 && input.notes.every(n => typeof n === 'string' && n.length <= 500);
+  if (kind === 'prep') return typeof input.situation === 'string' && input.situation.length <= 500 && (input.person === null || typeof input.person === 'string' && input.person.length <= 100) && Array.isArray(input.notes) && input.notes.length <= 3 && input.notes.every(n => typeof n === 'string' && n.length <= 500) && (input.goal === undefined || typeof input.goal === 'string' && input.goal.length <= 500);
   if (kind === 'stuck') return typeof input.word === 'string' && input.word.length <= 200;
   return typeof input.raw === 'string' && input.raw.length <= 1000;
 }

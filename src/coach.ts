@@ -13,6 +13,7 @@ export type Person = {
   id: string;
   name: string;
   relationship: string;
+  goal?: string;
   notes: Note[];
 };
 
@@ -20,7 +21,8 @@ export type PrepCard = { opener: string; followUps: [string, string]; exit: stri
 export type StuckCard = { ask: string; share: string; change: string; leave: string; quiet: string };
 export type NoteSuggestion = { name: string; detail: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
-export type ChatContext = { name: string; notes: string[] };
+export type Story = { about: string; goal: string; help: string };
+export type ChatContext = { name?: string; notes?: string[]; personGoal?: string; story?: Story };
 
 export const initialPrep: PrepCard = {
   opener: "Good to see you. How's your week going?",
@@ -73,6 +75,7 @@ export async function getPrep(situation: string, person?: Person, includeNotes =
     situation,
     person: person?.name || null,
     notes: includeNotes ? person?.notes.filter((note) => note.status === 'current').map((note) => note.text).slice(0, 3) : [],
+    goal: includeNotes ? (person?.goal || '').slice(0, 500) : '',
   }, provider);
   return result || fallback;
 }
