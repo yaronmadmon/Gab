@@ -16,6 +16,34 @@ const originHeaders = request => {
   const allowed = process.env.CORS_ORIGIN || 'http://localhost:8081';
   return origin === allowed ? { 'Access-Control-Allow-Origin': allowed, 'Access-Control-Allow-Headers': 'content-type, authorization', 'Access-Control-Allow-Methods': 'POST, OPTIONS', Vary: 'Origin' } : {};
 };
+const chatInstructions = "You are Gab, a warm, concise conversation coach helping people take small steps in real life. Ask one short question when context is missing; otherwise give practical, natural advice without manipulation or invented facts. The core idea is to listen, ask about what the other person said, then share a little. Respect boundaries and do not push someone into unwanted contact. Do not claim to remember facts not supplied in this conversation. For severe distress encourage support from someone trusted or a professional; for immediate danger urge emergency help. Never suggest you are a substitute for real relationships. Do not automatically save information.";
+async function handleChat(request, headers) {
+  try {
+    const raw = await request.text();
+    if (raw.length > 24000) return json({ error: 'Request too large' }, 413, headers);
+    let input;
+    try { input = JSON.parse(raw); } catch { return json({ error: 'Invalid JSON' }, 400, headers); }
+    if (!input || !['openai', 'claude'].includes(input.provider) || !Array.isArray(input.messages) || input.messages.length < 1 || input.messages.length > 20 || input.messages.some(m => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || !m.content.trim() || m.content.length > 1500) || input.messages.at(-1).role !== 'user') return json({ error: 'Invalid request' }, 400, headers);
+    const key = input.provider === 'claude' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
+    if (!key) return json({ error: 'Provider is not configured' }, 503, headers);
+    let reply;
+    if (input.provider === 'openai') {
+      const client = new OpenAI({ apiKey: key });
+      const result = await client.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-6-luna', instructions: chatInstructions, input: input.messages, store: false, max_output_tokens: 350 });
+      reply = result.output_text;
+    } else {
+      const response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2026-10-21' }, body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: 350, system: chatInstructions, messages: input.messages }) });
+      if (!response.ok) throw new Error('Claude request failed');
+      const result = await response.json();
+      reply = result.content?.filter(item => item.type === 'text').map(item => item.text).join('');
+    }
+    if (typeof reply !== 'string' || !reply.trim()) throw new Error('Empty reply');
+    return json({ reply }, 200, headers);
+  } catch (error) {
+    console.error('Chat request failed:', error?.status || error?.name || 'unknown');
+    return json({ error: 'Coach service unavailable' }, 502, headers);
+  }
+}
 function validInput(kind, input) {
   if (!input || typeof input !== 'object' || !['openai', 'claude'].includes(input.provider)) return false;
   if (kind === 'prep') return typeof input.situation === 'string' && input.situation.length <= 500 && (input.person === null || typeof input.person === 'string' && input.person.length <= 100) && Array.isArray(input.notes) && input.notes.length <= 3 && input.notes.every(n => typeof n === 'string' && n.length <= 500);
@@ -42,6 +70,7 @@ export async function handleCoach(request, kind) {
   const headers = originHeaders(request);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (request.method !== 'POST') return json({ error: 'Not found' }, 404, headers);
+  if (kind === 'chat') return handleChat(request, headers);
   if (Number(request.headers.get('content-length')) > 12000) return json({ error: 'Request too large' }, 413, headers);
   try {
     const raw = await request.text();

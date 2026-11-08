@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { handleCoach } from './coach-core.mjs';
 
-const paths = { '/api/prep': 'prep', '/api/stuck': 'stuck', '/api/note': 'note' };
+const paths = { '/api/prep': 'prep', '/api/stuck': 'stuck', '/api/note': 'note', '/api/chat': 'chat' };
 http.createServer(async (req, res) => {
   const kind = paths[req.url];
   if (!kind) { res.writeHead(404); res.end(); return; }
