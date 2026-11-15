@@ -17,6 +17,8 @@ export type Fact = {
   /** Day the thing happens, YYYY-MM-DD, when the fact is about an event. */
   date?: string;
   createdAt: string;
+  /** Kept for the user's own memory; the coach must never bring it up. */
+  private?: boolean;
 };
 
 export type Person = {
@@ -116,11 +118,25 @@ export function applyOps(people: Person[], ops: MemoryOp[], now = new Date()): {
   return { people: next, changes };
 }
 
-/** Undo for a saved fact or a person Gab added. Goal and place changes are fixed on the person card. */
-export function undoChange(people: Person[], change: SavedChange): Person[] {
-  if (change.kind === 'person') return people.filter(p => p.id !== change.personId);
+/**
+ * Undo for a saved fact or a person Gab added. Goal and place changes are fixed on the person card.
+ * A person is removed only if everything known about them is being undone too, so undoing
+ * "Added David" never wipes facts saved about him later.
+ */
+export function undoChange(people: Person[], change: SavedChange, undoneTogether: SavedChange[] = [change]): Person[] {
   if (change.kind === 'fact') return people.map(p => (p.id === change.personId ? { ...p, facts: p.facts.filter(f => f.id !== change.factId) } : p));
+  if (change.kind === 'person') {
+    const undoneFacts = new Set(undoneTogether.filter(c => c.kind === 'fact').map(c => c.factId));
+    return people.filter(p => p.id !== change.personId || p.facts.some(f => !undoneFacts.has(f.id)));
+  }
   return people;
+}
+
+/** The last turns of a chat, trimmed so the first one sent is always the user's. */
+export function recentTurns(messages: ChatMessage[], max = 40): ChatMessage[] {
+  const recent = messages.slice(-max);
+  const firstUser = recent.findIndex(m => m.role === 'user');
+  return firstUser === -1 ? [] : recent.slice(firstUser);
 }
 
 /** The person's own calendar day, YYYY-MM-DD, never the server's. */
@@ -156,7 +172,7 @@ export function whenLabel(days: number) {
 export function memoryForCoach(people: Person[]) {
   if (!people.length) return 'No people saved yet.';
   return people.slice(0, 60).map(p => {
-    const facts = p.facts.slice(0, 15).map(f => `  - ${f.text}${f.date ? ` (date: ${f.date})` : ''}`).join('\n');
+    const facts = p.facts.slice(0, 15).map(f => `  - ${f.text}${f.date ? ` (date: ${f.date})` : ''}${f.private ? ' [PRIVATE: never suggest bringing this up]' : ''}`).join('\n');
     return `${p.name} | where: ${p.where || 'unknown'} | goal: ${GOAL_LABELS[p.goal]}\n${facts || '  - (no facts yet)'}`;
   }).join('\n');
 }

@@ -19,9 +19,11 @@ export async function POST(request: Request) {
   try { body = JSON.parse(raw); } catch { return bad('Invalid JSON'); }
 
   const messages = Array.isArray(body.messages) ? body.messages : [];
+  // Gab's own earlier replies can be long, so they get more room than the user's messages.
   const valid = messages.length > 0 && messages.length <= 60 && messages.every(
-    m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim() && m.content.length <= 4000,
-  ) && messages.at(-1).role === 'user';
+    m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim()
+      && m.content.length <= (m.role === 'user' ? 4000 : 20000),
+  ) && messages[0].role === 'user' && messages.at(-1).role === 'user';
   if (!valid) return bad('Invalid messages');
   const memory = typeof body.memory === 'string' ? body.memory.slice(0, 40_000) : '';
   const today = typeof body.today === 'string' ? body.today.slice(0, 40) : '';
@@ -34,8 +36,9 @@ export async function POST(request: Request) {
   ];
 
   const ops: unknown[] = [];
+  const said: string[] = [];
   try {
-    for (let round = 0; round < 3; round++) {
+    for (let round = 0; round < 4; round++) {
       const response = await client.beta.messages.create({
         model: MODEL,
         max_tokens: 16000,
@@ -51,12 +54,11 @@ export async function POST(request: Request) {
         return Response.json({ reply: "I can't help with that one. Tell me a bit more about what you're hoping for, and we'll find another way.", ops: [] });
       }
 
+      // Keep text from every round, including any written alongside a save.
+      const text = response.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map(b => b.text).join('').trim();
+      if (text) said.push(text);
       const toolUses = response.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use');
-      if (response.stop_reason !== 'tool_use' || toolUses.length === 0) {
-        const reply = response.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map(b => b.text).join('').trim();
-        if (!reply) throw new Error('Empty reply');
-        return Response.json({ reply, ops: ops as MemoryOp[] });
-      }
+      if (response.stop_reason !== 'tool_use' || toolUses.length === 0) break;
 
       for (const use of toolUses) {
         const changes = (use.input as { changes?: unknown })?.changes;
@@ -66,7 +68,10 @@ export async function POST(request: Request) {
       convo.push({ role: 'assistant', content: response.content });
       convo.push({ role: 'user', content: toolUses.map(use => ({ type: 'tool_result' as const, tool_use_id: use.id, content: 'Saved. The user can see and undo it.' })) });
     }
-    throw new Error('Too many rounds');
+    const reply = said.join('\n\n').trim();
+    if (!reply && !ops.length) throw new Error('Empty reply');
+    // If the model only saved and ran out of rounds, still keep the saves.
+    return Response.json({ reply: reply || 'Got it. I saved that.', ops: ops as MemoryOp[] });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) console.error('Gab: AI key missing or wrong');
     else if (error instanceof Anthropic.RateLimitError) return bad('Busy right now, try again in a minute.', 429);

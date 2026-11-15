@@ -66,9 +66,16 @@ export default function PersonCard({ person, today, onChange, onDelete, onPrep, 
           <ul className="facts">
             {person.facts.map(f => (
               <li key={f.id}>
-                <div>
+                <div className="fact-body">
                   <p>{f.text}</p>
                   {f.date && <span className="fact-date">{dayCounts.has(f.id) ? whenLabel(dayCounts.get(f.id)!) : new Date(`${f.date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+                  <button
+                    className={`fact-private ${f.private ? 'on' : ''}`}
+                    aria-pressed={!!f.private}
+                    onClick={() => onChange({ ...person, facts: person.facts.map(x => (x.id === f.id ? { ...x, private: !x.private } : x)) })}
+                  >
+                    {f.private ? "Don't bring up · on" : "Don't bring up"}
+                  </button>
                 </div>
                 <button className="icon-btn small" onClick={() => onChange({ ...person, facts: person.facts.filter(x => x.id !== f.id) })} aria-label={`Delete: ${f.text}`}>✕</button>
               </li>

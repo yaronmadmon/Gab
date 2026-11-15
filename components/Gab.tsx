@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  applyOps, chatTitle, comingUp, emptyMemory, GOAL_LABELS, localDay, memoryForCoach, newId, parseOps, undoChange, whenLabel,
+  applyOps, chatTitle, comingUp, emptyMemory, GOAL_LABELS, localDay, memoryForCoach, newId, parseOps, recentTurns, undoChange, whenLabel,
   type Chat, type ChatMessage, type Memory, type Person, type SavedChange,
 } from '@/lib/memory';
 import { loadMemory, saveMemory } from '@/lib/storage';
@@ -30,31 +30,56 @@ export default function Gab() {
   const endRef = useRef<HTMLDivElement>(null);
   const voice = useVoice(text => setDraft(text));
 
-  useEffect(() => { setMemory(loadMemory()); setToday(localDay()); setLoaded(true); }, []);
+  // The latest memory, so a reply that arrives later never overwrites edits made while waiting.
+  const memRef = useRef<Memory>(memory);
+
+  useEffect(() => {
+    const loadedMemory = loadMemory();
+    memRef.current = loadedMemory;
+    setMemory(loadedMemory);
+    setLoaded(true);
+    // Keep "today" right if the tab stays open past midnight.
+    const tick = () => setToday(localDay());
+    tick();
+    const timer = setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
+  }, []);
 
   const commit = (next: Memory) => {
+    memRef.current = next;
     setMemory(next);
     if (!saveMemory(next)) setError('This browser would not save. Your notes may not be kept.');
   };
+  /** Change memory from its latest state. */
+  const change = (fn: (m: Memory) => Memory) => commit(fn(memRef.current));
 
   const chat = memory.chats.find(c => c.id === chatId) ?? null;
   const person = memory.people.find(p => p.id === personId) ?? null;
   const upcoming = useMemo(() => (today ? comingUp(memory.people, today) : []), [memory.people, today]);
 
+  // Grow the message box with its text (works where CSS field-sizing does not).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, [draft]);
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [chat?.messages.length, busy]);
 
   const startNew = () => { setChatId(null); setDraft(''); setError(''); setMenuOpen(false); inputRef.current?.focus(); };
 
-  async function send(textArg?: string) {
+  async function send(textArg?: string, fresh = false) {
     const text = (textArg ?? draft).trim();
     if (!text || busy) return;
     if (voice.listening) voice.toggle();
     setError('');
-    const base: Chat = chat ?? { id: newId(), title: chatTitle(text), updatedAt: '', messages: [], saved: [] };
+    const open = fresh ? null : chat;
+    const base: Chat = open ?? { id: newId(), title: chatTitle(text), updatedAt: '', messages: [], saved: [] };
     const messages: ChatMessage[] = [...base.messages, { role: 'user', content: text }];
     const pending: Chat = { ...base, messages, updatedAt: new Date().toISOString() };
-    const withPending = { ...memory, chats: [pending, ...memory.chats.filter(c => c.id !== pending.id)] };
-    commit(withPending);
+    change(m => ({ ...m, chats: [pending, ...m.chats.filter(c => c.id !== pending.id)] }));
     setChatId(pending.id);
     setDraft('');
     setBusy(true);
@@ -64,24 +89,27 @@ export default function Gab() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          messages: messages.slice(-40),
-          memory: memoryForCoach(withPending.people),
+          messages: recentTurns(messages),
+          memory: memoryForCoach(memRef.current.people),
           today: `${localDay(now)}, ${now.toLocaleDateString('en-US', { weekday: 'long' })}`,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || typeof data.reply !== 'string') throw new Error(data.error || 'Gab could not answer right now.');
-      const { people, changes } = applyOps(withPending.people, parseOps(data.ops));
-      const answered: Chat = {
-        ...pending,
-        messages: [...messages, { role: 'assistant', content: data.reply }],
-        saved: changes.length ? [...pending.saved, { afterMessage: messages.length, changes }] : pending.saved,
-        updatedAt: new Date().toISOString(),
-      };
-      commit({ people, chats: [answered, ...withPending.chats.filter(c => c.id !== answered.id)] });
+      change(m => {
+        const { people, changes } = applyOps(m.people, parseOps(data.ops));
+        const current = m.chats.find(c => c.id === pending.id) ?? pending;
+        const answered: Chat = {
+          ...current,
+          messages: [...messages, { role: 'assistant', content: data.reply }],
+          saved: changes.length ? [...current.saved, { afterMessage: messages.length, changes }] : current.saved,
+          updatedAt: new Date().toISOString(),
+        };
+        return { people, chats: [answered, ...m.chats.filter(c => c.id !== answered.id)] };
+      });
     } catch (e) {
       // Put the words back so nothing typed is lost.
-      commit({ ...withPending, chats: base.messages.length ? [base, ...memory.chats.filter(c => c.id !== base.id)] : memory.chats });
+      change(m => ({ ...m, chats: base.messages.length ? m.chats.map(c => (c.id === base.id ? base : c)) : m.chats.filter(c => c.id !== base.id) }));
       if (!base.messages.length) setChatId(null);
       setDraft(text);
       setError(e instanceof Error ? e.message : 'Gab could not answer right now.');
@@ -90,33 +118,39 @@ export default function Gab() {
     }
   }
 
-  const undo = (change: SavedChange) => {
+  const undo = (saved: SavedChange, group: SavedChange[]) => {
     if (!chat) return;
-    const people = undoChange(memory.people, change);
-    const saved = chat.saved
-      .map(s => ({ ...s, changes: s.changes.filter(c => c !== change && !(change.kind === 'person' && c.personId === change.personId)) }))
-      .filter(s => s.changes.length);
-    commit({ people, chats: memory.chats.map(c => (c.id === chat.id ? { ...c, saved } : c)) });
+    // Undoing "Added David" also undoes the facts saved with him, but never facts saved later.
+    const together = saved.kind === 'person' ? group.filter(c => c.personId === saved.personId) : [saved];
+    change(m => {
+      let people = m.people;
+      for (const c of together) people = undoChange(people, c, together);
+      const chats = m.chats.map(c => (c.id !== chat.id ? c : {
+        ...c,
+        saved: c.saved.map(s => ({ ...s, changes: s.changes.filter(x => !together.includes(x)) })).filter(s => s.changes.length),
+      }));
+      return { people, chats };
+    });
   };
 
-  const updatePerson = (next: Person) => commit({ ...memory, people: memory.people.map(p => (p.id === next.id ? next : p)) });
-  const deletePerson = (id: string) => { commit({ ...memory, people: memory.people.filter(p => p.id !== id) }); setPersonId(null); };
+  const updatePerson = (next: Person) => change(m => ({ ...m, people: m.people.map(p => (p.id === next.id ? next : p)) }));
+  const deletePerson = (id: string) => { change(m => ({ ...m, people: m.people.filter(p => p.id !== id) })); setPersonId(null); };
   const addPerson = () => {
     const name = newName.trim();
     if (!name) return;
     const existing = memory.people.find(p => p.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     if (existing) { setPersonId(existing.id); setNewName(''); return; }
     const p: Person = { id: newId(), name, where: '', goal: 'unsure', facts: [] };
-    commit({ ...memory, people: [p, ...memory.people] });
+    change(m => ({ ...m, people: [p, ...m.people] }));
     setNewName('');
     setPersonId(p.id);
   };
   const deleteChat = (id: string) => {
     if (!window.confirm('Delete this chat? What Gab saved about people stays.')) return;
-    commit({ ...memory, chats: memory.chats.filter(c => c.id !== id) });
+    change(m => ({ ...m, chats: m.chats.filter(c => c.id !== id) }));
     if (chatId === id) setChatId(null);
   };
-  const prepFor = (p: Person) => { setPersonId(null); setMenuOpen(false); setChatId(null); void send(`I'm about to see ${p.name}. Help me get ready.`); };
+  const prepFor = (p: Person) => { setPersonId(null); setMenuOpen(false); void send(`I'm about to see ${p.name}. Help me get ready.`, true); };
 
   const pickStarter = (text: string) => { setDraft(text); requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(text.length, text.length); } }); };
 
@@ -198,11 +232,11 @@ export default function Gab() {
             chat.messages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 {m.role === 'assistant' ? <Reply text={m.content} /> : <p>{m.content}</p>}
-                {chat.saved.filter(s => s.afterMessage === i).flatMap(s => s.changes).map((c, j) => (
+                {chat.saved.filter(s => s.afterMessage === i).flatMap(s => s.changes.map(c => ({ c, group: s.changes }))).map(({ c, group }, j) => (
                   <div key={j} className="saved">
                     <span className="saved-label">Remembered</span>
                     <button className="saved-text" onClick={() => setPersonId(c.personId)}>{c.label}</button>
-                    {(c.kind === 'fact' || c.kind === 'person') && <button className="saved-undo" onClick={() => undo(c)}>Undo</button>}
+                    {(c.kind === 'fact' || c.kind === 'person') && <button className="saved-undo" onClick={() => undo(c, group)}>Undo</button>}
                   </div>
                 ))}
               </div>

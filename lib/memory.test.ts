@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOps, comingUp, parseOps, undoChange, whenLabel, type Person } from './memory.ts';
+import { applyOps, comingUp, memoryForCoach, parseOps, recentTurns, undoChange, whenLabel, type Person } from './memory.ts';
 
 test('parseOps drops bad changes from the AI', () => {
   const ops = parseOps([
@@ -34,11 +34,32 @@ test('the same fact is not saved twice', () => {
   assert.equal(second.changes.length, 0);
 });
 
-test('undo removes a saved fact, and a person Gab added', () => {
+test('undo removes a saved fact, and a person Gab added with it', () => {
   const { people, changes } = applyOps([], [{ type: 'add_fact', person: 'Eli', text: 'Moving in March' }]);
   const factUndone = undoChange(people, changes[1]);
   assert.equal(factUndone[0].facts.length, 0);
-  assert.equal(undoChange(people, changes[0]).length, 0);
+  assert.equal(undoChange(people, changes[0], changes).length, 0);
+});
+
+test('undoing "Added David" keeps facts saved about him later', () => {
+  const first = applyOps([], [{ type: 'add_person', name: 'David' }]);
+  const later = applyOps(first.people, [{ type: 'add_fact', person: 'David', text: "Son's wedding" }]);
+  const after = undoChange(later.people, first.changes[0], first.changes);
+  assert.equal(after.length, 1);
+  assert.equal(after[0].facts.length, 1);
+});
+
+test('recent turns always start with the user', () => {
+  const msgs = Array.from({ length: 45 }, (_, i) => ({ role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant', content: `m${i}` }));
+  const recent = recentTurns(msgs);
+  assert.equal(recent[0].role, 'user');
+  assert.equal(recent.at(-1)?.content, 'm44');
+  assert.ok(recent.length <= 40);
+});
+
+test('private notes are marked for the coach', () => {
+  const text = memoryForCoach([{ id: 'p', name: 'Dana', where: '', goal: 'unsure', facts: [{ id: 'f', text: 'Father is sick', createdAt: '', private: true }] }]);
+  assert.match(text, /PRIVATE/);
 });
 
 test('coming up keeps a week back to two weeks ahead, by calendar day', () => {
