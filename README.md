@@ -1,77 +1,46 @@
 # Gab
 
-Gab helps you get ready for a real conversation, find one small nudge during a lull, and remember what a person told you afterward. This repository contains an Expo/React Native app for iOS, Android, and the web, plus a Vercel API.
+A coach for awkward moments that remembers the people in your life.
 
-## What works
+You talk or type, like a normal chat. Gab helps with three moments:
 
-- **Chat**: type or dictate to the coach on the home screen. Messages in the current session go to the selected AI provider. You can explicitly select a person to share their name and up to three current notes. Each of your messages offers a note suggestion that you can review and approve before saving.
-- **Your story & circle**: answer a few optional questions about yourself or one person, then review and approve before saving. In the chat menu, you can explicitly share your story and select a person's name, goal, and current notes for coaching. Your answers are stored locally; the browser version is not encrypted.
-- **I froze / That felt awkward**: describe a missed or awkward moment and get an optional response and a small next step. Gab never sends a message for you.
-- **Practice**: choose a scene and a response style, then type or dictate to a practice partner. You can play its replies aloud, end at any time, and get one strength and one next step. Practice is not saved.
-- **Your progress**: optional daily ideas, saved wins and reflections, a rolling seven-day recap, and configurable hints. An opt-in gradual setting reduces hints weekly. An optional reminder appears inside Gab when it is open after the chosen time; the web app does not send background notifications. Progress stays on the device and browser storage is not encrypted.
-- **About to…**: a short card with an opener, two follow-ups, and a kind exit.
-- **I'm stuck**: ask, share, change topic, leave kindly, or simply allow a quiet moment.
-- **People Notebook**: add people, dictate or type a debrief, review a proposed detail, approve it, then edit, mark, or delete it later. Each saved detail retains the user's original words.
-- **Local fallback**: the first two cards work without an API connection.
-- **Privacy controls**: native Notebook data is encrypted at rest, with the encryption key in the device's secure store. The app asks for device authentication when available. It does not listen to other people.
+- **Before:** "I'm about to see David." You get a short brief: what you know about him, an opener or two, a follow-up, and an easy way out.
+- **Right now:** "We're walking and it's silent." One or two lines you can use straight away.
+- **After:** "Here's what happened." A quick debrief, and Gab saves what you learned.
 
-The web app stores notes in ordinary browser storage and does not have biometric locking. Use fictional details for browser testing.
+Gab fills in your people as you talk. Each thing it saves shows under the reply as "Remembered", with Undo. The sidebar has **Coming up** (dated things a week back to two weeks ahead), **Your people** (tap one for their card: where you know them, what you want with them, what you know) and your past chats.
 
-## Vercel setup
+## For now
 
-The Git repository builds the web app and three Vercel Functions. In Vercel Project Settings → Environment Variables, add these for **Production** and **Preview** as secret values:
+- No sign-in. Everything is kept in this browser only. It does not follow you to another device, and clearing browser data erases it.
+- The chat service is open to anyone with the address, and every message uses the AI credits. Keep the address private until sign-in and limits are added.
 
-- `OPENAI_API_KEY`: your existing OpenAI API key.
-- `ANTHROPIC_API_KEY`: your Claude API key, if you want Claude access.
+## Run it locally
 
-You can set `OPENAI_MODEL` and `ANTHROPIC_MODEL` to override the defaults. Redeploy after changing environment variables. Do not use the `EXPO_PUBLIC_` prefix for API keys. The web app calls same-origin `/api/*` endpoints. Native builds need `EXPO_PUBLIC_API_BASE_URL` set to the deployed Vercel URL at build time.
+Node 22 or newer.
 
-The AI API is publicly accessible. Anyone who can reach it can use the configured API credits. Add authentication and rate limits before sharing it widely.
-
-## Run locally
-
-Use Node.js 22.13 or newer. From this directory:
-
-```powershell
+```bash
 npm install
+npm run dev
 ```
 
-To use your **existing** OpenAI key, run this on your own machine. It prompts for the key without showing what you type and writes it to the ignored `.env.local` file:
+The chat needs an Anthropic API key in `.env.local` as `ANTHROPIC_API_KEY`. Without one, the app opens but replies fail with "Gab could not answer right now."
 
-```powershell
-./scripts/configure-key.ps1
-```
+## Deploy
 
-Add `ANTHROPIC_API_KEY` to `.env.local` if you want to use Claude locally. See `.env.example` for the variable names.
-
-Then start the API and app in separate terminals:
-
-```powershell
-npm run coach
-```
-
-```powershell
-npm run web
-```
-
-Open `http://localhost:8081`. The API listens on `127.0.0.1:8787` by default. Provider keys stay in the API process; they are not embedded in the phone or web bundle.
-
-For Android or iOS, `expo-speech-recognition` requires a **development build**, so Expo Go cannot run voice dictation. On a machine with the native toolchain, run `npx expo run:android` or `npx expo run:ios`. Android emulator API requests can use `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8787`. A physical phone needs the deployed Vercel URL in `EXPO_PUBLIC_API_BASE_URL`; the local fallback cards and Notebook work without it.
-
-## Privacy boundary
-
-People and notes are stored only on the device in the native app. When you request AI coaching, your current text goes to the Gab API and then to the selected provider, OpenAI or Claude. A selected person's approved notes are sent only if you turn on the note option on the prep screen. When you request an AI note suggestion, that debrief text goes to the selected provider; the proposed note is stored only after you approve it. The API does not persist request bodies and uses `store: false` for OpenAI Responses API calls. Dictation uses the operating system's speech service, which may process audio over a network depending on device settings.
-
-Do not advertise this prototype as fully on-device AI. The plan's stronger privacy promise requires an on-device model or a separate user-reviewed policy for cloud processing.
+Vercel builds it as a Next.js app. Set `ANTHROPIC_API_KEY` in the project's environment variables. `ANTHROPIC_MODEL` is optional and defaults to Claude Opus 5.5.
 
 ## Checks
 
-```powershell
+```bash
+npm test
 npm run typecheck
-npx expo-doctor
-npx expo export --platform web
+npm run build
 ```
 
-## Next product steps
+## Where things are
 
-Test this version with about ten people for two weeks. Watch whether they use **I'm stuck** in a real conversation and add someone to the Notebook. Then build the missed-moment text and short voice practice flows. Before a public release, add account/device recovery, a secure hosted API with authentication and rate limits, and native device testing on both platforms.
+- `lib/prompt.ts`: Gab's coaching rules and the remember tool.
+- `app/api/chat/route.ts`: the server call to Claude.
+- `lib/memory.ts`: people, facts, Coming up, and the rules for saving and undoing (tested in `lib/memory.test.ts`).
+- `components/`: the screens.
