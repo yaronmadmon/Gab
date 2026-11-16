@@ -27,6 +27,10 @@ export type Person = {
   where: string;
   goal: Goal;
   facts: Fact[];
+  /** The story so far: how they met, what happened between them. Free text. */
+  history?: string;
+  /** What the user wants with this person, in their own words. */
+  wish?: string;
 };
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
@@ -38,6 +42,8 @@ export type Chat = {
   messages: ChatMessage[];
   /** What Gab saved during this chat, shown under the reply that saved it. */
   saved: { afterMessage: number; changes: SavedChange[] }[];
+  /** The person this chat was started about (prep, interview, "talk about"). */
+  personId?: string;
 };
 
 export type Memory = { people: Person[]; chats: Chat[] };
@@ -47,10 +53,20 @@ export type MemoryOp =
   | { type: 'add_person'; name: string; where?: string; goal?: Goal }
   | { type: 'add_fact'; person: string; text: string; date?: string }
   | { type: 'set_goal'; person: string; goal: Goal }
-  | { type: 'set_where'; person: string; where: string };
+  | { type: 'set_where'; person: string; where: string }
+  | { type: 'add_history'; person: string; text: string }
+  | { type: 'set_wish'; person: string; text: string };
 
 /** What actually changed, so the person can see it and undo it. */
-export type SavedChange = { label: string; personId: string; factId?: string; kind: 'person' | 'fact' | 'goal' | 'where' };
+export type SavedChange = {
+  label: string; personId: string; factId?: string;
+  kind: 'person' | 'fact' | 'goal' | 'where' | 'history' | 'wish';
+  /** For history and wish: the text before the change, so undo can put it back. */
+  before?: string;
+};
+
+export const HISTORY_MAX = 4000;
+export const WISH_MAX = 600;
 
 export const emptyMemory = (): Memory => ({ people: [], chats: [] });
 
@@ -74,6 +90,8 @@ export function parseOps(raw: unknown): MemoryOp[] {
     else if (o.type === 'add_fact' && clean(o.text, 300)) out.push({ type: 'add_fact', person, text: clean(o.text, 300), date: isDay(o.date) ? o.date : undefined });
     else if (o.type === 'set_goal' && isGoal(o.goal)) out.push({ type: 'set_goal', person, goal: o.goal });
     else if (o.type === 'set_where' && clean(o.where, 120)) out.push({ type: 'set_where', person, where: clean(o.where, 120) });
+    else if (o.type === 'add_history' && clean(o.text, 1500)) out.push({ type: 'add_history', person, text: clean(o.text, 1500) });
+    else if (o.type === 'set_wish' && clean(o.text, WISH_MAX)) out.push({ type: 'set_wish', person, text: clean(o.text, WISH_MAX) });
   }
   return out;
 }
@@ -113,6 +131,19 @@ export function applyOps(people: Person[], ops: MemoryOp[], now = new Date()): {
       if (person.where === op.where) continue;
       person.where = op.where;
       changes.push({ kind: 'where', personId: person.id, label: `${person.name}: ${op.where}` });
+    } else if (op.type === 'add_history') {
+      // Gab adds to the story; it never replaces what the user wrote.
+      const person = ensure(op.person);
+      const before = person.history ?? '';
+      if (before.toLocaleLowerCase().includes(op.text.toLocaleLowerCase())) continue;
+      person.history = (before ? `${before}\n\n${op.text}` : op.text).slice(0, HISTORY_MAX);
+      changes.push({ kind: 'history', personId: person.id, before, label: `${person.name}'s story: ${op.text}` });
+    } else if (op.type === 'set_wish') {
+      const person = ensure(op.person);
+      const before = person.wish ?? '';
+      if (before === op.text) continue;
+      person.wish = op.text;
+      changes.push({ kind: 'wish', personId: person.id, before, label: `${person.name}, you want: ${op.text}` });
     }
   }
   return { people: next, changes };
@@ -127,9 +158,24 @@ export function undoChange(people: Person[], change: SavedChange, undoneTogether
   if (change.kind === 'fact') return people.map(p => (p.id === change.personId ? { ...p, facts: p.facts.filter(f => f.id !== change.factId) } : p));
   if (change.kind === 'person') {
     const undoneFacts = new Set(undoneTogether.filter(c => c.kind === 'fact').map(c => c.factId));
-    return people.filter(p => p.id !== change.personId || p.facts.some(f => !undoneFacts.has(f.id)));
+    // Keep the person if anything else is known: a later fact, a story, or a wish not being undone now.
+    const undoneStory = undoneTogether.some(c => c.kind === 'history' && c.personId === change.personId && !c.before);
+    const undoneWish = undoneTogether.some(c => c.kind === 'wish' && c.personId === change.personId && !c.before);
+    return people.filter(p => p.id !== change.personId
+      || p.facts.some(f => !undoneFacts.has(f.id))
+      || (!!p.history && !undoneStory)
+      || (!!p.wish && !undoneWish));
+  }
+  if (change.kind === 'history' || change.kind === 'wish') {
+    const key = change.kind;
+    return people.map(p => (p.id === change.personId ? { ...p, [key]: change.before || undefined } : p));
   }
   return people;
+}
+
+/** Chats about a person: started about them, or where Gab saved something about them. */
+export function chatsAbout(chats: Chat[], personId: string): Chat[] {
+  return chats.filter(c => c.personId === personId || c.saved.some(s => s.changes.some(ch => ch.personId === personId)));
 }
 
 /** The last turns of a chat, trimmed so the first one sent is always the user's. */
@@ -173,7 +219,9 @@ export function memoryForCoach(people: Person[]) {
   if (!people.length) return 'No people saved yet.';
   return people.slice(0, 60).map(p => {
     const facts = p.facts.slice(0, 15).map(f => `  - ${f.text}${f.date ? ` (date: ${f.date})` : ''}${f.private ? ' [PRIVATE: never suggest bringing this up]' : ''}`).join('\n');
-    return `${p.name} | where: ${p.where || 'unknown'} | goal: ${GOAL_LABELS[p.goal]}\n${facts || '  - (no facts yet)'}`;
+    const wish = p.wish ? `\n  What the user wants, in their words: ${p.wish}` : '';
+    const history = p.history ? `\n  History: ${p.history.slice(0, 1500).replace(/\s*\n\s*/g, ' ')}` : '';
+    return `${p.name} | where: ${p.where || 'unknown'} | goal: ${GOAL_LABELS[p.goal]}${wish}${history}\n${facts || '  - (no facts yet)'}`;
   }).join('\n');
 }
 

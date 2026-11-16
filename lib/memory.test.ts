@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOps, comingUp, memoryForCoach, parseOps, recentTurns, undoChange, whenLabel, type Person } from './memory.ts';
+import { applyOps, chatsAbout, comingUp, memoryForCoach, parseOps, recentTurns, undoChange, whenLabel, type Person } from './memory.ts';
 
 test('parseOps drops bad changes from the AI', () => {
   const ops = parseOps([
@@ -77,6 +77,52 @@ test('coming up keeps a week back to two weeks ahead, by calendar day', () => {
 test('coming up does not drift across a daylight saving change', () => {
   const person: Person = { id: 'p', name: 'A', where: '', goal: 'unsure', facts: [{ id: 'a', text: 'x', date: '2026-11-02', createdAt: '' }] };
   assert.equal(comingUp([person], '2026-10-31')[0].days, 2);
+});
+
+test('Gab adds to the story and never wipes what the user wrote', () => {
+  const start: Person[] = [{ id: 'p', name: 'David', where: '', goal: 'unsure', facts: [], history: 'We met at synagogue years ago.' }];
+  const { people, changes } = applyOps(start, parseOps([
+    { type: 'add_history', person: 'David', text: 'We argued about the building fund last year.' },
+    { type: 'set_wish', person: 'David', text: 'I want things easy between us again.' },
+  ]));
+  assert.equal(people[0].history, 'We met at synagogue years ago.\n\nWe argued about the building fund last year.');
+  assert.equal(people[0].wish, 'I want things easy between us again.');
+  assert.deepEqual(changes.map(c => c.kind), ['history', 'wish']);
+  const undone = undoChange(undoChange(people, changes[0]), changes[1]);
+  assert.equal(undone[0].history, 'We met at synagogue years ago.');
+  assert.equal(undone[0].wish, undefined);
+});
+
+test('the same story line is not added twice', () => {
+  const first = applyOps([], [{ type: 'add_history', person: 'Dana', text: 'Old school friend' }]);
+  const second = applyOps(first.people, [{ type: 'add_history', person: 'Dana', text: 'old school friend' }]);
+  assert.equal(second.changes.length, 0);
+});
+
+test('undoing a new person from an interview removes their story too', () => {
+  const { people, changes } = applyOps([], parseOps([
+    { type: 'add_person', person: 'Eli' },
+    { type: 'add_history', person: 'Eli', text: 'Neighbor since 2019' },
+    { type: 'set_wish', person: 'Eli', text: 'Stay friendly' },
+  ]));
+  let after = people;
+  for (const c of changes) after = undoChange(after, c, changes);
+  assert.equal(after.length, 0);
+});
+
+test('the coach sees the story and the wish', () => {
+  const text = memoryForCoach([{ id: 'p', name: 'Dana', where: 'work', goal: 'closer', facts: [], history: 'Started the same week.\nLunch sometimes.', wish: 'Become real friends' }]);
+  assert.match(text, /in their words: Become real friends/);
+  assert.match(text, /History: Started the same week\. Lunch sometimes\./);
+});
+
+test('chats about a person include ones that saved something about them', () => {
+  const chats = [
+    { id: 'a', title: '', updatedAt: '', messages: [], saved: [], personId: 'p' },
+    { id: 'b', title: '', updatedAt: '', messages: [], saved: [{ afterMessage: 0, changes: [{ kind: 'fact' as const, personId: 'p', label: '' }] }] },
+    { id: 'c', title: '', updatedAt: '', messages: [], saved: [] },
+  ];
+  assert.deepEqual(chatsAbout(chats, 'p').map(c => c.id), ['a', 'b']);
 });
 
 test('when labels read naturally', () => {
