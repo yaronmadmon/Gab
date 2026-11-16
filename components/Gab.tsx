@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  applyOps, chatTitle, comingUp, emptyMemory, GOAL_LABELS, localDay, memoryForCoach, newId, parseOps, recentTurns, undoChange, whenLabel,
+  applyOps, chatsAbout, chatTitle, comingUp, emptyMemory, GOAL_LABELS, localDay, memoryForCoach, newId, parseOps, recentTurns, undoChange, whenLabel,
   type Chat, type ChatMessage, type Memory, type Person, type SavedChange,
 } from '@/lib/memory';
 import { loadMemory, saveMemory } from '@/lib/storage';
 import { useVoice } from './useVoice';
 import PersonCard from './PersonCard';
+import AddPerson from './AddPerson';
 import { Reply } from './Reply';
 
 const STARTERS = [
@@ -24,7 +25,9 @@ export default function Gab() {
   const [error, setError] = useState('');
   const [personId, setPersonId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  /** The person a new chat will be about, set by "Talk about". */
+  const [aboutId, setAboutId] = useState<string | null>(null);
   const [today, setToday] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -68,15 +71,15 @@ export default function Gab() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [chat?.messages.length, busy]);
 
-  const startNew = () => { setChatId(null); setDraft(''); setError(''); setMenuOpen(false); inputRef.current?.focus(); };
+  const startNew = () => { setChatId(null); setAboutId(null); setDraft(''); setError(''); setMenuOpen(false); inputRef.current?.focus(); };
 
-  async function send(textArg?: string, fresh = false) {
+  async function send(textArg?: string, fresh = false, about: string | null = aboutId) {
     const text = (textArg ?? draft).trim();
     if (!text || busy) return;
     if (voice.listening) voice.toggle();
     setError('');
     const open = fresh ? null : chat;
-    const base: Chat = open ?? { id: newId(), title: chatTitle(text), updatedAt: '', messages: [], saved: [] };
+    const base: Chat = open ?? { id: newId(), title: chatTitle(text), updatedAt: '', messages: [], saved: [], ...(about ? { personId: about } : {}) };
     const messages: ChatMessage[] = [...base.messages, { role: 'user', content: text }];
     const pending: Chat = { ...base, messages, updatedAt: new Date().toISOString() };
     change(m => ({ ...m, chats: [pending, ...m.chats.filter(c => c.id !== pending.id)] }));
@@ -107,6 +110,8 @@ export default function Gab() {
         };
         return { people, chats: [answered, ...m.chats.filter(c => c.id !== answered.id)] };
       });
+      // Only forget who the chat is about once it is safely started, so a retry keeps the link.
+      setAboutId(null);
     } catch (e) {
       // Put the words back so nothing typed is lost.
       change(m => ({ ...m, chats: base.messages.length ? m.chats.map(c => (c.id === base.id ? base : c)) : m.chats.filter(c => c.id !== base.id) }));
@@ -135,22 +140,33 @@ export default function Gab() {
 
   const updatePerson = (next: Person) => change(m => ({ ...m, people: m.people.map(p => (p.id === next.id ? next : p)) }));
   const deletePerson = (id: string) => { change(m => ({ ...m, people: m.people.filter(p => p.id !== id) })); setPersonId(null); };
-  const addPerson = () => {
-    const name = newName.trim();
-    if (!name) return;
-    const existing = memory.people.find(p => p.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-    if (existing) { setPersonId(existing.id); setNewName(''); return; }
-    const p: Person = { id: newId(), name, where: '', goal: 'unsure', facts: [] };
+  const savePerson = (p: Person) => {
     change(m => ({ ...m, people: [p, ...m.people] }));
-    setNewName('');
+    setAddOpen(false);
     setPersonId(p.id);
+  };
+  /** Gab interviews you about someone; the person is added right away so they show in the menu. */
+  const interview = (name: string) => {
+    let id = memRef.current.people.find(p => p.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.id;
+    if (!id) {
+      const p: Person = { id: newId(), name, where: '', goal: 'unsure', facts: [] };
+      id = p.id;
+      change(m => ({ ...m, people: [p, ...m.people] }));
+    }
+    setAddOpen(false); setPersonId(null); setMenuOpen(false);
+    void send(`Help me add ${name} to my people. Ask me about them, one question at a time.`, true, id);
+  };
+  const talkAbout = (p: Person) => {
+    setPersonId(null); setMenuOpen(false); setChatId(null); setError('');
+    setAboutId(p.id);
+    pickStarter(`About ${p.name}: `);
   };
   const deleteChat = (id: string) => {
     if (!window.confirm('Delete this chat? What Gab saved about people stays.')) return;
     change(m => ({ ...m, chats: m.chats.filter(c => c.id !== id) }));
     if (chatId === id) setChatId(null);
   };
-  const prepFor = (p: Person) => { setPersonId(null); setMenuOpen(false); void send(`I'm about to see ${p.name}. Help me get ready.`, true); };
+  const prepFor = (p: Person) => { setPersonId(null); setMenuOpen(false); void send(`I'm about to see ${p.name}. Help me get ready.`, true, p.id); };
 
   const pickStarter = (text: string) => { setDraft(text); requestAnimationFrame(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(text.length, text.length); } }); };
 
@@ -186,10 +202,8 @@ export default function Gab() {
               </span>
             </button>
           ))}
-          {loaded && memory.people.length === 0 && <p className="side-empty">Mention someone in a chat and Gab will add them here.</p>}
-          <form className="add-person" onSubmit={e => { e.preventDefault(); addPerson(); }}>
-            <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Add a person" maxLength={80} aria-label="Add a person by name" />
-          </form>
+          {loaded && memory.people.length === 0 && <p className="side-empty">Add the people in your life, or just mention someone in a chat.</p>}
+          <button className="add-person-btn" onClick={() => { setAddOpen(true); setMenuOpen(false); }}><span aria-hidden>＋</span> Add a person</button>
         </section>
 
         {memory.chats.length > 0 && (
@@ -229,7 +243,13 @@ export default function Gab() {
               )}
             </div>
           ) : (
-            chat.messages.map((m, i) => (
+            <>
+            {chat.personId && memory.people.some(p => p.id === chat.personId) && (
+              <button className="about-chip" onClick={() => setPersonId(chat.personId!)}>
+                About {memory.people.find(p => p.id === chat.personId)!.name} · open their page
+              </button>
+            )}
+            {chat.messages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 {m.role === 'assistant' ? <Reply text={m.content} /> : <p>{m.content}</p>}
                 {chat.saved.filter(s => s.afterMessage === i).flatMap(s => s.changes.map(c => ({ c, group: s.changes }))).map(({ c, group }, j) => (
@@ -240,7 +260,8 @@ export default function Gab() {
                   </div>
                 ))}
               </div>
-            ))
+            ))}
+            </>
           )}
           {busy && <div className="msg assistant thinking" aria-live="polite"><span /><span /><span /></div>}
           <div ref={endRef} />
@@ -275,10 +296,22 @@ export default function Gab() {
         <PersonCard
           person={person}
           today={today}
+          chats={chatsAbout(memory.chats, person.id)}
           onChange={updatePerson}
           onDelete={() => deletePerson(person.id)}
           onPrep={() => prepFor(person)}
+          onTalk={() => talkAbout(person)}
+          onInterview={() => interview(person.name)}
+          onOpenChat={id => { setPersonId(null); setChatId(id); setError(''); }}
           onClose={() => setPersonId(null)}
+        />
+      )}
+      {addOpen && (
+        <AddPerson
+          existingNames={memory.people.map(p => p.name)}
+          onSave={savePerson}
+          onInterview={interview}
+          onClose={() => setAddOpen(false)}
         />
       )}
     </div>

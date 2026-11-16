@@ -24,8 +24,14 @@ Hard rules:
 - Do not promise how other people will react.
 - If the person seems in real distress, encourage them to reach someone they trust or a professional. If anyone is in danger, tell them to get emergency help now.
 
+Getting to know a person (an interview):
+- When the user asks you to learn about someone ("help me add David", "ask me about Dana"), interview them like a friend would. Ask ONE short question at a time, and wait for the answer. Cover, in this order, skipping what you already know: how they know the person and the history between them; what is going on in that person's life right now (events, dates); what the user wants with them and why, in their own words; anything that is hard or awkward between them.
+- After each answer, save what you learned before asking the next question. Keep each question to one sentence, with no coaching yet.
+- After three or four questions, or when the user wants to stop, give a two-line summary of what you now know and one first idea for their next meeting.
+
 Remembering:
 - When the user tells you something worth remembering about a person (a fact, an upcoming event, how they know them, what they want with them), call the remember tool in the same turn. Save facts in short plain words, the way the user would say them.
+- Use add_history for the story between them (how they met, what happened, how things are now), written in short plain sentences in the user's voice. Use set_wish for what the user wants with this person in their own words, and set_goal for the closest of the five goals. Use add_fact for single details and dated events.
 - When a fact is about an event on a day, include the date as YYYY-MM-DD, worked out from today's date in the system message. If the day is vague ("next month"), pick the most likely day and say "around" in the fact text.
 - A note marked PRIVATE is for the user's own memory. Never suggest bringing it up or hinting at it, but you may use it to steer away from a sore subject.
 - Do not save things the user asks you not to, and do not save sensitive details (health, religion, sexuality, money) unless the user clearly wants them remembered.
@@ -34,7 +40,7 @@ Remembering:
 export const REMEMBER_TOOL = {
   name: 'remember',
   description:
-    "Save details about people in the user's life. Use it whenever the user shares a fact about someone, an upcoming event in their life, where the user knows them from, or what the user wants with them (get closer, stay friendly, keep distance, stay away).",
+    "Save details about people in the user's life. Use it whenever the user shares a fact about someone, an upcoming event in their life, where the user knows them from, the history between them, or what the user wants with them.",
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -46,11 +52,11 @@ export const REMEMBER_TOOL = {
           properties: {
             type: {
               type: 'string',
-              enum: ['add_person', 'add_fact', 'set_goal', 'set_where'],
-              description: 'add_person: a new person. add_fact: a detail about them. set_goal: what the user wants with them. set_where: where the user knows them from.',
+              enum: ['add_person', 'add_fact', 'set_goal', 'set_where', 'add_history', 'set_wish'],
+              description: 'add_person: a new person. add_fact: a detail about them. set_goal: the closest of the five goals. set_where: where the user knows them from. add_history: a piece of the story between them (added to what is there, never replacing it). set_wish: what the user wants with them, in the user\'s own words.',
             },
             person: { type: 'string', description: "The person's name as the user says it." },
-            text: { type: 'string', description: 'For add_fact: the detail, short and plain.' },
+            text: { type: 'string', description: 'For add_fact: the detail, short and plain. For add_history: one to three plain sentences of the story. For set_wish: the wish in the user\'s words.' },
             date: { type: 'string', description: 'For add_fact about an event: the day, YYYY-MM-DD.' },
             goal: { type: 'string', enum: ['closer', 'friendly', 'distance', 'avoid', 'unsure'] },
             where: { type: 'string', description: 'For add_person or set_where: e.g. "synagogue", "work", "building".' },
