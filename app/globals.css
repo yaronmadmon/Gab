@@ -248,3 +248,9 @@ button:disabled { cursor: default; opacity: 0.45; }
   .composer-wrap { padding: 6px 12px max(12px, env(safe-area-inset-bottom)); }
   .chat-del { opacity: 1; }
 }
+
+/* Who they are to you */
+.who-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.who-row select { flex: 1 1 220px; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.age-box { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.age-box input { width: 72px; }

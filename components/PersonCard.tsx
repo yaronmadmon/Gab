@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { comingUp, GOAL_LABELS, HISTORY_MAX, newId, whenLabel, WISH_MAX, type Chat, type Goal, type Person } from '@/lib/memory';
+import { ageOf, comingUp, fitGoal, GOAL_LABELS, goalsFor, HISTORY_MAX, newId, whenLabel, WISH_MAX, type Chat, type Person } from '@/lib/memory';
+import WhoPicker, { birthYearFrom } from './WhoPicker';
 
-const GOALS = Object.keys(GOAL_LABELS) as Goal[];
+const ageText = (p: Person) => { const a = ageOf(p); return a === undefined ? '' : String(a); };
 
 /** A person's page: their story, what you want with them, things to remember, and your chats about them. */
 export default function PersonCard({ person, today, chats, onChange, onDelete, onPrep, onTalk, onInterview, onOpenChat, onClose }: {
@@ -14,17 +15,20 @@ export default function PersonCard({ person, today, chats, onChange, onDelete, o
   const [where, setWhere] = useState(person.where);
   const [history, setHistory] = useState(person.history ?? '');
   const [wish, setWish] = useState(person.wish ?? '');
+  const [age, setAge] = useState(ageText(person));
   const [fact, setFact] = useState('');
   const [date, setDate] = useState('');
   // Pick up changes Gab saves while the page is open.
   useEffect(() => { setName(person.name); setWhere(person.where); }, [person.id, person.name, person.where]);
   useEffect(() => { setHistory(person.history ?? ''); }, [person.id, person.history]);
   useEffect(() => { setWish(person.wish ?? ''); }, [person.id, person.wish]);
+  useEffect(() => { setAge(ageText(person)); }, [person.id, person.birthYear]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Save every typed-but-unsaved box in one change, so leaving the page never loses words. */
   const flush = () => {
     const n = name.trim() || person.name;
-    const next: Person = { ...person, name: n, where: where.trim(), history: history.trim() || undefined, wish: wish.trim() || undefined };
-    if (next.name !== person.name || next.where !== person.where || next.history !== person.history || next.wish !== person.wish) onChange(next);
+    const birthYear = person.relationship === 'child' ? birthYearFrom(age) ?? person.birthYear : person.birthYear;
+    const next: Person = { ...person, name: n, where: where.trim(), history: history.trim() || undefined, wish: wish.trim() || undefined, birthYear };
+    if (next.name !== person.name || next.where !== person.where || next.history !== person.history || next.wish !== person.wish || next.birthYear !== person.birthYear) onChange(next);
   };
   const leave = (then: () => void) => () => { flush(); then(); };
   const close = leave(onClose);
@@ -39,6 +43,7 @@ export default function PersonCard({ person, today, chats, onChange, onDelete, o
   const saveName = () => { const n = name.trim(); if (n && n !== person.name) onChange({ ...person, name: n }); else setName(person.name); };
   const saveWhere = () => { if (where.trim() !== person.where) onChange({ ...person, where: where.trim() }); };
   const saveHistory = () => { const h = history.trim(); if (h !== (person.history ?? '')) onChange({ ...person, history: h || undefined }); };
+  const saveAge = () => { const y = birthYearFrom(age); if (y !== undefined && y !== person.birthYear) onChange({ ...person, birthYear: y }); };
   const saveWish = () => { const w = wish.trim(); if (w !== (person.wish ?? '')) onChange({ ...person, wish: w || undefined }); };
   const addFact = () => {
     const text = fact.trim();
@@ -65,6 +70,9 @@ export default function PersonCard({ person, today, chats, onChange, onDelete, o
           </div>
         </div>
 
+        <WhoPicker value={person.relationship} age={age} onAge={setAge} onAgeDone={saveAge}
+          onChange={r => onChange({ ...person, relationship: r, goal: fitGoal(person.goal, r) })} />
+
         <label className="field">
           <span>Where you know them</span>
           <input value={where} onChange={e => setWhere(e.target.value)} onBlur={saveWhere} placeholder="Work, synagogue, the building…" maxLength={120} />
@@ -79,7 +87,7 @@ export default function PersonCard({ person, today, chats, onChange, onDelete, o
         <div className="field">
           <span>What you want with them</span>
           <div className="goals" role="radiogroup" aria-label="What you want with this person">
-            {GOALS.map(g => (
+            {goalsFor(person.relationship).map(g => (
               <button key={g} role="radio" aria-checked={person.goal === g} className={person.goal === g ? 'on' : ''} onClick={() => onChange({ ...person, goal: g })}>{GOAL_LABELS[g]}</button>
             ))}
           </div>
