@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOps, chatsAbout, comingUp, memoryForCoach, parseOps, recentTurns, undoChange, whenLabel, type Person } from './memory.ts';
+import { ageOf, applyOps, chatsAbout, goalsFor, comingUp, memoryForCoach, parseOps, recentTurns, undoChange, whenLabel, type Person } from './memory.ts';
 
 test('parseOps drops bad changes from the AI', () => {
   const ops = parseOps([
@@ -130,4 +130,38 @@ test('when labels read naturally', () => {
   assert.equal(whenLabel(1), 'Tomorrow');
   assert.equal(whenLabel(5), 'In 5 days');
   assert.equal(whenLabel(-3), '3 days ago · ask how it went');
+});
+
+test('who they are is saved, and a goal that does not fit is not kept', () => {
+  const { people, changes } = applyOps([], parseOps([
+    { type: 'add_person', person: 'Noa', relationship: 'child', goal: 'avoid' },
+    { type: 'set_age', person: 'Noa', age: 9 },
+    { type: 'set_relationship', person: 'Noa', relationship: 'banana' },
+  ]), new Date('2026-11-16T12:00:00'));
+  assert.equal(people[0].relationship, 'child');
+  assert.equal(people[0].goal, 'closer');
+  assert.equal(ageOf(people[0], new Date('2026-11-16T12:00:00')), 9);
+  assert.deepEqual(changes.map(c => c.kind), ['person', 'age']);
+});
+
+test('Gab cannot set "stay away" for a spouse', () => {
+  const start: Person[] = [{ id: 'p', name: 'Sarah', where: '', goal: 'closer', facts: [], relationship: 'spouse' }];
+  const { people, changes } = applyOps(start, parseOps([{ type: 'set_goal', person: 'Sarah', goal: 'avoid' }]));
+  assert.equal(people[0].goal, 'closer');
+  assert.equal(changes.length, 0);
+  assert.ok(!goalsFor('child').includes('avoid'));
+  assert.ok(goalsFor('neighbor').includes('avoid'));
+});
+
+test('changing who someone is keeps a goal that still fits', () => {
+  const start: Person[] = [{ id: 'p', name: 'Mark', where: '', goal: 'distance', facts: [] }];
+  const { people } = applyOps(start, parseOps([{ type: 'set_relationship', person: 'Mark', relationship: 'boss' }]));
+  assert.equal(people[0].relationship, 'boss');
+  assert.equal(people[0].goal, 'distance');
+});
+
+test('the coach sees who they are and their age', () => {
+  const text = memoryForCoach([{ id: 'p', name: 'Eli', where: '', goal: 'closer', facts: [], relationship: 'child', birthYear: 2010 }], new Date('2026-11-16T12:00:00'));
+  assert.match(text, /who: My child \| age: about 16/);
+  assert.match(memoryForCoach([{ id: 'q', name: 'X', where: '', goal: 'unsure', facts: [] }]), /who: not set/);
 });

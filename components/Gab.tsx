@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  applyOps, chatsAbout, chatTitle, comingUp, emptyMemory, GOAL_LABELS, localDay, memoryForCoach, newId, parseOps, recentTurns, undoChange, whenLabel,
+  applyOps, chatsAbout, chatTitle, comingUp, emptyMemory, GOAL_LABELS, RELATIONSHIP_LABELS, localDay, memoryForCoach, newId, parseOps, recentTurns, undoChange, whenLabel,
   type Chat, type ChatMessage, type Memory, type Person, type SavedChange,
 } from '@/lib/memory';
 import { loadMemory, saveMemory } from '@/lib/storage';
@@ -198,7 +198,7 @@ export default function Gab() {
               <span className="avatar" aria-hidden>{p.name.slice(0, 1).toUpperCase()}</span>
               <span className="person-meta">
                 <span className="person-name">{p.name}</span>
-                <span className="person-sub">{[p.where, p.goal !== 'unsure' ? GOAL_LABELS[p.goal] : ''].filter(Boolean).join(' · ') || `${p.facts.length} notes`}</span>
+                <span className="person-sub">{[p.relationship ? RELATIONSHIP_LABELS[p.relationship] : p.where, p.goal !== 'unsure' ? GOAL_LABELS[p.goal] : ''].filter(Boolean).join(' · ') || `${p.facts.length} notes`}</span>
               </span>
             </button>
           ))}

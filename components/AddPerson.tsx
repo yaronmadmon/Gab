@@ -1,8 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { GOAL_LABELS, HISTORY_MAX, newId, WISH_MAX, type Fact, type Goal, type Person } from '@/lib/memory';
-
-const GOALS = Object.keys(GOAL_LABELS) as Goal[];
+import { fitGoal, GOAL_LABELS, goalsFor, HISTORY_MAX, newId, WISH_MAX, type Fact, type Goal, type Person, type Relationship } from '@/lib/memory';
+import WhoPicker, { birthYearFrom } from './WhoPicker';
 
 type Row = { text: string; date: string };
 
@@ -17,6 +16,8 @@ export default function AddPerson({ existingNames, onSave, onInterview, onClose 
   const [where, setWhere] = useState('');
   const [history, setHistory] = useState('');
   const [goal, setGoal] = useState<Goal>('unsure');
+  const [relationship, setRelationship] = useState<Relationship | undefined>();
+  const [age, setAge] = useState('');
   const [wish, setWish] = useState('');
   const [rows, setRows] = useState<Row[]>([{ text: '', date: '' }]);
 
@@ -34,7 +35,8 @@ export default function AddPerson({ existingNames, onSave, onInterview, onClose 
     const now = new Date().toISOString();
     const facts: Fact[] = rows.filter(r => r.text.trim()).map(r => ({ id: newId(), text: r.text.trim(), date: r.date || undefined, createdAt: now }));
     onSave({
-      id: newId(), name: trimmed, where: where.trim(), goal, facts,
+      id: newId(), name: trimmed, where: where.trim(), goal, facts, relationship,
+      birthYear: relationship === 'child' ? birthYearFrom(age) : undefined,
       history: history.trim() || undefined, wish: wish.trim() || undefined,
     });
   };
@@ -55,6 +57,9 @@ export default function AddPerson({ existingNames, onSave, onInterview, onClose 
           <input value={name} onChange={e => setName(e.target.value)} placeholder="David" maxLength={80} autoFocus />
           {taken && <small className="warn">{trimmed} is already in your people.</small>}
         </label>
+
+        <WhoPicker value={relationship} age={age} onAge={setAge}
+          onChange={r => { setRelationship(r); setGoal(g => fitGoal(g, r)); }} />
 
         <div className="interview-offer">
           <p>Rather talk it through? Gab will ask you a few questions and fill this in for you.</p>
@@ -77,7 +82,7 @@ export default function AddPerson({ existingNames, onSave, onInterview, onClose 
         <div className="field">
           <span>What you want with them</span>
           <div className="goals" role="radiogroup" aria-label="What you want with this person">
-            {GOALS.map(g => (
+            {goalsFor(relationship).map(g => (
               <button type="button" key={g} role="radio" aria-checked={goal === g} className={goal === g ? 'on' : ''} onClick={() => setGoal(g)}>{GOAL_LABELS[g]}</button>
             ))}
           </div>

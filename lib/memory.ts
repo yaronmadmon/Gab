@@ -11,6 +11,47 @@ export const GOAL_LABELS: Record<Goal, string> = {
   unsure: 'Not sure yet',
 };
 
+/** Who the person is to the user. Gab coaches each kind differently. */
+export type Relationship =
+  | 'spouse' | 'child' | 'parent' | 'sibling' | 'family'
+  | 'boss' | 'coworker' | 'friend' | 'crush' | 'neighbor' | 'community' | 'club' | 'other';
+
+export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
+  spouse: 'Spouse or partner',
+  child: 'My child',
+  parent: 'My parent',
+  sibling: 'Brother or sister',
+  family: 'Other family',
+  boss: 'My boss',
+  coworker: 'Coworker',
+  friend: 'Friend',
+  crush: 'Someone I like',
+  neighbor: 'Neighbor',
+  community: 'Community (synagogue, school)',
+  club: 'Club or activity',
+  other: 'Other',
+};
+
+export const RELATIONSHIPS = Object.keys(RELATIONSHIP_LABELS) as Relationship[];
+
+/** Goals that make sense for each kind. "Stay away" from your own child is not a choice Gab offers. */
+export function goalsFor(rel?: Relationship): Goal[] {
+  if (rel === 'spouse' || rel === 'child') return ['closer', 'unsure'];
+  if (rel === 'boss') return ['closer', 'friendly', 'distance', 'unsure'];
+  return ['closer', 'friendly', 'distance', 'avoid', 'unsure'];
+}
+
+/** The goal to keep when the kind changes: the same one if it still fits, otherwise a sensible start. */
+export function fitGoal(goal: Goal, rel?: Relationship): Goal {
+  if (goalsFor(rel).includes(goal)) return goal;
+  return rel === 'spouse' || rel === 'child' ? 'closer' : 'unsure';
+}
+
+/** Age today from a birth year, or undefined. */
+export function ageOf(p: Pick<Person, 'birthYear'>, now = new Date()) {
+  return p.birthYear ? now.getFullYear() - p.birthYear : undefined;
+}
+
 export type Fact = {
   id: string;
   text: string;
@@ -31,6 +72,10 @@ export type Person = {
   history?: string;
   /** What the user wants with this person, in their own words. */
   wish?: string;
+  /** Who they are to the user. Missing on people saved before this existed. */
+  relationship?: Relationship;
+  /** Kept as a year, not an age, so it never goes stale. Asked for children. */
+  birthYear?: number;
 };
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
@@ -50,17 +95,19 @@ export type Memory = { people: Person[]; chats: Chat[] };
 
 /** A change Gab asks to make. Comes from the AI, so every field is checked. */
 export type MemoryOp =
-  | { type: 'add_person'; name: string; where?: string; goal?: Goal }
+  | { type: 'add_person'; name: string; where?: string; goal?: Goal; relationship?: Relationship }
   | { type: 'add_fact'; person: string; text: string; date?: string }
   | { type: 'set_goal'; person: string; goal: Goal }
   | { type: 'set_where'; person: string; where: string }
   | { type: 'add_history'; person: string; text: string }
-  | { type: 'set_wish'; person: string; text: string };
+  | { type: 'set_wish'; person: string; text: string }
+  | { type: 'set_relationship'; person: string; relationship: Relationship }
+  | { type: 'set_age'; person: string; age: number };
 
 /** What actually changed, so the person can see it and undo it. */
 export type SavedChange = {
   label: string; personId: string; factId?: string;
-  kind: 'person' | 'fact' | 'goal' | 'where' | 'history' | 'wish';
+  kind: 'person' | 'fact' | 'goal' | 'where' | 'history' | 'wish' | 'relationship' | 'age';
   /** For history and wish: the text before the change, so undo can put it back. */
   before?: string;
 };
@@ -75,6 +122,7 @@ export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(
 const GOALS = Object.keys(GOAL_LABELS) as Goal[];
 const isGoal = (v: unknown): v is Goal => typeof v === 'string' && (GOALS as string[]).includes(v);
 const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+const isRelationship = (v: unknown): v is Relationship => typeof v === 'string' && (RELATIONSHIPS as string[]).includes(v);
 const clean = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 /** Keeps only well-formed changes from whatever the AI sent. */
@@ -86,12 +134,14 @@ export function parseOps(raw: unknown): MemoryOp[] {
     const o = item as Record<string, unknown>;
     const person = clean(o.person ?? o.name, 80);
     if (!person) continue;
-    if (o.type === 'add_person') out.push({ type: 'add_person', name: person, where: clean(o.where, 120) || undefined, goal: isGoal(o.goal) ? o.goal : undefined });
+    if (o.type === 'add_person') out.push({ type: 'add_person', name: person, where: clean(o.where, 120) || undefined, goal: isGoal(o.goal) ? o.goal : undefined, relationship: isRelationship(o.relationship) ? o.relationship : undefined });
     else if (o.type === 'add_fact' && clean(o.text, 300)) out.push({ type: 'add_fact', person, text: clean(o.text, 300), date: isDay(o.date) ? o.date : undefined });
     else if (o.type === 'set_goal' && isGoal(o.goal)) out.push({ type: 'set_goal', person, goal: o.goal });
     else if (o.type === 'set_where' && clean(o.where, 120)) out.push({ type: 'set_where', person, where: clean(o.where, 120) });
     else if (o.type === 'add_history' && clean(o.text, 1500)) out.push({ type: 'add_history', person, text: clean(o.text, 1500) });
     else if (o.type === 'set_wish' && clean(o.text, WISH_MAX)) out.push({ type: 'set_wish', person, text: clean(o.text, WISH_MAX) });
+    else if (o.type === 'set_relationship' && isRelationship(o.relationship)) out.push({ type: 'set_relationship', person, relationship: o.relationship });
+    else if (o.type === 'set_age' && typeof o.age === 'number' && Number.isInteger(o.age) && o.age >= 0 && o.age <= 110) out.push({ type: 'set_age', person, age: o.age });
   }
   return out;
 }
@@ -114,7 +164,9 @@ export function applyOps(people: Person[], ops: MemoryOp[], now = new Date()): {
     if (op.type === 'add_person') {
       const person = ensure(op.name);
       if (op.where && !person.where) person.where = op.where;
+      if (op.relationship && !person.relationship) person.relationship = op.relationship;
       if (op.goal && person.goal === 'unsure') person.goal = op.goal;
+      person.goal = fitGoal(person.goal, person.relationship);
     } else if (op.type === 'add_fact') {
       const person = ensure(op.person);
       if (person.facts.some(f => f.text.toLocaleLowerCase() === op.text.toLocaleLowerCase())) continue;
@@ -123,9 +175,10 @@ export function applyOps(people: Person[], ops: MemoryOp[], now = new Date()): {
       changes.push({ kind: 'fact', personId: person.id, factId: fact.id, label: `${person.name}: ${op.text}` });
     } else if (op.type === 'set_goal') {
       const person = ensure(op.person);
-      if (person.goal === op.goal) continue;
-      person.goal = op.goal;
-      changes.push({ kind: 'goal', personId: person.id, label: `${person.name}: ${GOAL_LABELS[op.goal]}` });
+      const goal = fitGoal(op.goal, person.relationship);
+      if (person.goal === goal) continue;
+      person.goal = goal;
+      changes.push({ kind: 'goal', personId: person.id, label: `${person.name}: ${GOAL_LABELS[goal]}` });
     } else if (op.type === 'set_where') {
       const person = ensure(op.person);
       if (person.where === op.where) continue;
@@ -144,6 +197,18 @@ export function applyOps(people: Person[], ops: MemoryOp[], now = new Date()): {
       if (before === op.text) continue;
       person.wish = op.text;
       changes.push({ kind: 'wish', personId: person.id, before, label: `${person.name}, you want: ${op.text}` });
+    } else if (op.type === 'set_relationship') {
+      const person = ensure(op.person);
+      if (person.relationship === op.relationship) continue;
+      person.relationship = op.relationship;
+      person.goal = fitGoal(person.goal, op.relationship);
+      changes.push({ kind: 'relationship', personId: person.id, label: `${person.name}: ${RELATIONSHIP_LABELS[op.relationship]}` });
+    } else if (op.type === 'set_age') {
+      const person = ensure(op.person);
+      const birthYear = now.getFullYear() - op.age;
+      if (person.birthYear === birthYear) continue;
+      person.birthYear = birthYear;
+      changes.push({ kind: 'age', personId: person.id, label: `${person.name}: age ${op.age}` });
     }
   }
   return { people: next, changes };
@@ -215,13 +280,16 @@ export function whenLabel(days: number) {
 }
 
 /** Short text version of memory for the coach. */
-export function memoryForCoach(people: Person[]) {
+export function memoryForCoach(people: Person[], now = new Date()) {
   if (!people.length) return 'No people saved yet.';
   return people.slice(0, 60).map(p => {
+    const rel = p.relationship ? ` | who: ${RELATIONSHIP_LABELS[p.relationship]}` : ' | who: not set';
+    const age = ageOf(p, now);
+    const ageText = age !== undefined ? ` | age: about ${age}` : '';
     const facts = p.facts.slice(0, 15).map(f => `  - ${f.text}${f.date ? ` (date: ${f.date})` : ''}${f.private ? ' [PRIVATE: never suggest bringing this up]' : ''}`).join('\n');
     const wish = p.wish ? `\n  What the user wants, in their words: ${p.wish}` : '';
     const history = p.history ? `\n  History: ${p.history.slice(0, 1500).replace(/\s*\n\s*/g, ' ')}` : '';
-    return `${p.name} | where: ${p.where || 'unknown'} | goal: ${GOAL_LABELS[p.goal]}${wish}${history}\n${facts || '  - (no facts yet)'}`;
+    return `${p.name}${rel}${ageText} | where: ${p.where || 'unknown'} | goal: ${GOAL_LABELS[p.goal]}${wish}${history}\n${facts || '  - (no facts yet)'}`;
   }).join('\n');
 }
 
